@@ -99,21 +99,35 @@ int main(int argc, char* argv[]){
 
 
 
-  int sockfd, new_fd;
+  int sockfd; //, new_fd;
   struct sockaddr_in my_addr;
-  struct sockaddr_in their_addr;
+  std::vector<sockaddr_in> vn_addrs(N);
   unsigned int sin_size;
   sockfd = socket(PF_INET, SOCK_STREAM, 0);
+
+  std::vector<int> vn_fds(N,0);
 
   my_addr.sin_family = AF_INET;
   my_addr.sin_port = htons(MYPORT);
   my_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
   memset(&(my_addr.sin_zero), '\0', 8);
+  
   bind(sockfd, (struct sockaddr*)&my_addr, sizeof(struct sockaddr));
   listen(sockfd, 10);
-
   sin_size = sizeof(struct sockaddr_in);
-  new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
+
+  std::vector<std::pair<std::string, int>> vn_details(N);
+
+  for(int i=0;i<N;i++){
+    vn_fds[i] = accept(sockfd, (struct sockaddr *)&(vn_addrs[i]), &sin_size);
+
+    char connect_buf[6];
+    recv(vn_fds[i], connect_buf, 6, 0);
+
+    vn_details[i] = decode_connect_msg(connect_buf);
+  }
+
+
   
   char *msg = "hello world\0";
   int len, bytes_sent;
