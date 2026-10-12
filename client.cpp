@@ -18,9 +18,10 @@ int main(){
   dest_addr.sin_port = htons(DEST_PORT);
   dest_addr.sin_addr.s_addr = inet_addr(DEST_IP);
   memset(&(dest_addr.sin_zero),'\0',8);
-  connect(sockfd, (struct sockaddr*)&dest_addr, sizeof(struct sockaddr));
-
+  int ret = connect(sockfd, (struct sockaddr*)&dest_addr, sizeof(struct sockaddr));
+  printf("\nconnect returns: %d\n", ret);
   char msg[32];
+  memset(msg, '\0', 32);
   int bytes_recv;
   bytes_recv = recv(sockfd, msg, 32, 0);
 
