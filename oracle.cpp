@@ -27,9 +27,13 @@ std::pair<std::string, int> decode_connect_msg(char* buf){
   return msg;
 }
 
-char* encode_link_state(std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs){
-    char* buf;
-    return buf;
+void encode_link_state(std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs,char buf[238]){
+    buf[0]=(char)(msgs.size());
+    for(int i=0;i<msgs.size();i++){
+      buf[4+9*i]=msgs[i].first.first;
+      snprintf(buf+5+9*i,)
+
+    }
 }
 
 std::vector<std::vector<int>> get_costs(char* file_name){
@@ -158,7 +162,9 @@ int main(int argc, char* argv[]){
     for(int j=0;j<costs[i].size();j++){
       msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,costs[i][j]}});
     }
-    send(vn_fds[i],encode_link_state(msgs));
+    char send_buffer[238];
+    encode_link_state(msgs,send_buffer);
+    send(vn_fds[i],send_buffer,238,0);
   }
 
   while(true){
@@ -174,7 +180,9 @@ int main(int argc, char* argv[]){
             msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,tmp[i][j]}});
           }
         }
-        send(vn_fds[i],encode_link_state(msgs),0);
+        char send_buffer[238];
+        encode_link_state(msgs,send_buffer);
+        send(vn_fds[i],send_buffer,238,0);
       }
       costs=tmp;
     }
