@@ -162,7 +162,11 @@ int main(int argc, char* argv[]){
     char connect_buf[8];
     int recieved_bytes=0;
     while(recieved_bytes<8){
-      recieved_bytes+=recv(vn_fds[i], connect_buf, 8, 0);
+      int just_recieved=recv(vn_fds[i], connect_buf+recieved_bytes, 8-recieved_bytes, 0);
+      if(just_recieved<=0){
+       std::cout<<"connection with "<<"A"+i<<" is closed or there is an error while recieving the connect message";
+        break;
+      }
     }
 
     vn_details[i] = decode_connect_msg(connect_buf);
