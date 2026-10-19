@@ -167,6 +167,7 @@ int main(int argc, char* argv[]){
        std::cout<<"connection with "<<"A"+i<<" is closed or there is an error while recieving the connect message";
         break;
       }
+      recieved_bytes+=just_recieved;
     }
 
     vn_details[i] = decode_connect_msg(connect_buf);
