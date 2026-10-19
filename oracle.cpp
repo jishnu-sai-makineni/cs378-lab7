@@ -11,10 +11,25 @@
 
 #define MYPORT 5000
 #define BACKLOG 2
+#define WAIT_TIME 10
 
 std::pair<std::string, int> decode_connect_msg(char* buf){
-  
-  return std::pair<std::string, int> ("",0);
+  std::pair<std::string,int> msg={"",0};
+  for(int i=0;i<4;i++){
+    int  a= buf[i];
+    char tmp_buf[10];
+    snprintf(tmp_buf,sizeof(tmp_buf),"%d",a);
+    std::string tmp_string(tmp_buf);
+    msg.first+=tmp_string;
+    if(i!=3)msg.first+=".";
+  }
+  msg.second=buf[4];
+  return msg;
+}
+
+char* encode_link_state(std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs){
+    char* buf;
+    return buf;
 }
 
 std::vector<std::vector<int>> get_costs(char* file_name){
@@ -55,24 +70,9 @@ std::vector<std::vector<int>> get_costs(char* file_name){
   return costs;
 }
 
-int main(int argc, char* argv[]){
-
-  if(argc != 2){
-    std::cout << "bad bad";
-    return -1;
-  }
-
-  std::ifstream fin(argv[1]);
-
-  if(!fin){
-    std::cout << "file bad";
-    return -1;
-  }
-
-  std::string line;
-  int N = 0;
+void parse_file(std::ifstream fin,std::vector<std::vector<int>>&costs,int&N){
   int n;
-  std::vector<std::vector<int>> costs;
+  std::string line;
   if(fin.is_open()){
     while(true){
       std::getline(fin, line);
@@ -101,8 +101,25 @@ int main(int argc, char* argv[]){
       costs.push_back(temp);
     }
   }
+}
 
+int main(int argc, char* argv[]){
 
+  if(argc != 2){
+    std::cout << "bad bad";
+    return -1;
+  }
+
+  std::ifstream fin(argv[1]);
+
+  if(!fin){
+    std::cout << "file bad";
+    return -1;
+  }
+
+  int N = 0;
+  std::vector<std::vector<int>> costs; //
+  parse_file(fin,costs,N);
 
   int sockfd; //, new_fd;
   struct sockaddr_in my_addr;
@@ -121,28 +138,61 @@ int main(int argc, char* argv[]){
   listen(sockfd, 10);
   sin_size = sizeof(struct sockaddr_in);
 
-  std::vector<std::pair<std::string, int>> vn_details(N);
+  std::vector<std::pair<std::string, int>> vn_details(N); //{ip_address,udpport}
 
   for(int i=0;i<N;i++){
     vn_fds[i] = accept(sockfd, (struct sockaddr *)&(vn_addrs[i]), &sin_size);
 
-    char connect_buf[6];
-    recv(vn_fds[i], connect_buf, 6, 0);
+    char connect_buf[8];
+    int recieved_bytes=0;
+    while(recieved_bytes<8){
+      recieved_bytes+=recv(vn_fds[i], connect_buf, 8, 0);
+    }
 
     vn_details[i] = decode_connect_msg(connect_buf);
   }
 
+  for(int i=0;i<N;i++){
+    vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
+    msgs.push_back({{'A'+i,vn_details[i].first},{vn_details[i].second,0}});
+    for(int j=0;j<costs[i].size();j++){
+      msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,costs[i][j]}});
+    }
+    send(vn_fds[i],encode_link_state(msgs));
+  }
+
+  while(true){
+    vector<vector<int>>tmp;
+    int number_of_nodes=0;
+    parse_file(fin,tmp,0);
+    if(tmp!=costs){
+     std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
+      for(int i=0;i<N;i++){
+        for(int j=0;j<costs[i].size();j++){
+          if(tmp[i][j]!=costs[i][j]){
+            msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,tmp[i][j]}});
+          }
+        }
+        send(vn_fds[i],encode_link_state(msgs));
+      }
+      costs=tmp;
+    }
+    sleep(WAIT_TIME);
+  }
+
+
+
 
   
-  char *msg = "hello world\0";
-  int len, bytes_sent;
+  // char *msg = "hello world\0";
+  // int len, bytes_sent;
 
-  len = strlen(msg);
-  // bytes_sent = send(new_fd, msg, len, 0);
+  // len = strlen(msg);
+  // // bytes_sent = send(new_fd, msg, len, 0);
   
-  printf("\nbytes sent: %d\n", bytes_sent);
+  // printf("\nbytes sent: %d\n", bytes_sent);
 
-  // close(new_fd);
-  close(sockfd);
+  // // close(new_fd);
+  // close(sockfd);
 }
 
