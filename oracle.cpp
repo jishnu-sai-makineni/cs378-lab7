@@ -70,7 +70,7 @@ std::vector<std::vector<int>> get_costs(char* file_name){
   return costs;
 }
 
-void parse_file(std::ifstream fin,std::vector<std::vector<int>>&costs,int&N){
+void parse_file(std::ifstream& fin,std::vector<std::vector<int>>&costs,int&N){
   int n;
   std::string line;
   if(fin.is_open()){
@@ -153,7 +153,7 @@ int main(int argc, char* argv[]){
   }
 
   for(int i=0;i<N;i++){
-    vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
+    std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
     msgs.push_back({{'A'+i,vn_details[i].first},{vn_details[i].second,0}});
     for(int j=0;j<costs[i].size();j++){
       msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,costs[i][j]}});
@@ -162,9 +162,10 @@ int main(int argc, char* argv[]){
   }
 
   while(true){
-    vector<vector<int>>tmp;
+    std::vector<std::vector<int>> tmp;
     int number_of_nodes=0;
-    parse_file(fin,tmp,0);
+    int N_ = 0;
+    parse_file(fin,tmp,N_);
     if(tmp!=costs){
      std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
       for(int i=0;i<N;i++){
@@ -173,7 +174,7 @@ int main(int argc, char* argv[]){
             msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,tmp[i][j]}});
           }
         }
-        send(vn_fds[i],encode_link_state(msgs));
+        send(vn_fds[i],encode_link_state(msgs),0);
       }
       costs=tmp;
     }
