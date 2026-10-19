@@ -8,12 +8,13 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <math.h>
 
 #define MYPORT 5000
 #define BACKLOG 2
 #define WAIT_TIME 10
 
-std::pair<std::string, int> decode_connect_msg(char* buf){
+std::pair<std::string, int> decode_connect_msg(char buf[8]){
   std::pair<std::string,int> msg={"",0};
   for(int i=0;i<4;i++){
     int  a= buf[i];
@@ -23,16 +24,27 @@ std::pair<std::string, int> decode_connect_msg(char* buf){
     msg.first+=tmp_string;
     if(i!=3)msg.first+=".";
   }
-  msg.second=buf[4];
+
+  memcpy(&(msg.second),buf+4,sizeof(msg.second));
   return msg;
 }
 
-void encode_link_state(std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs,char buf[238]){
+void encode_link_state(std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs,char buf[339]){
     buf[0]=(char)(msgs.size());
     for(int i=0;i<msgs.size();i++){
-      buf[4+9*i]=msgs[i].first.first;
-      snprintf(buf+5+9*i,)
-
+      buf[1+9*i]=msgs[i].first.first;
+      std::string ip_tmp=msgs[i].first.second;
+      for(int k=0;k<4;k++){
+        std::string tmp="";
+        int j=0;
+        while(ip_tmp[j]!='.' && j<ip_tmp.size()){
+          tmp+=ip_tmp[j];
+          j++;
+        }
+        buf[2+9*i+k]=(char)(std::stoi(tmp));
+      }
+      memcpy(buf+8+9*i,&(msgs[i].second.first),sizeof(int));
+      memcpy(buf+12+9*i,&msgs[i].second.second,sizeof(int));//check here 
     }
 }
 
@@ -162,9 +174,9 @@ int main(int argc, char* argv[]){
     for(int j=0;j<costs[i].size();j++){
       msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,costs[i][j]}});
     }
-    char send_buffer[238];
+    char send_buffer[339];
     encode_link_state(msgs,send_buffer);
-    send(vn_fds[i],send_buffer,238,0);
+    send(vn_fds[i],send_buffer,339,0);
   }
 
   while(true){
@@ -180,9 +192,9 @@ int main(int argc, char* argv[]){
             msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,tmp[i][j]}});
           }
         }
-        char send_buffer[238];
+        char send_buffer[339];
         encode_link_state(msgs,send_buffer);
-        send(vn_fds[i],send_buffer,238,0);
+        send(vn_fds[i],send_buffer,339,0);
       }
       costs=tmp;
     }
@@ -204,4 +216,3 @@ int main(int argc, char* argv[]){
   // // close(new_fd);
   // close(sockfd);
 }
-
