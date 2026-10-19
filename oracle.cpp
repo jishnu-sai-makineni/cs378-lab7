@@ -12,6 +12,11 @@
 #define MYPORT 5000
 #define BACKLOG 2
 
+std::pair<std::string, int> decode_connect_msg(char* buf){
+  
+  return std::pair<std::string, int> ("",0);
+}
+
 std::vector<std::vector<int>> get_costs(char* file_name){
   std::ifstream fin(file_name);
 
@@ -133,11 +138,11 @@ int main(int argc, char* argv[]){
   int len, bytes_sent;
 
   len = strlen(msg);
-  bytes_sent = send(new_fd, msg, len, 0);
+  // bytes_sent = send(new_fd, msg, len, 0);
   
   printf("\nbytes sent: %d\n", bytes_sent);
 
-  close(new_fd);
+  // close(new_fd);
   close(sockfd);
 }
 
