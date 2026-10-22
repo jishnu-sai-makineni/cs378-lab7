@@ -11,7 +11,7 @@
 #include <math.h>
 
 #define MYPORT 5000
-#define BACKLOG 2
+#define BACKLOG 26
 #define WAIT_TIME 10
 
 std::pair<std::string, int> decode_connect_msg(char buf[8]){
@@ -151,7 +151,7 @@ int main(int argc, char* argv[]){
   memset(&(my_addr.sin_zero), '\0', 8);
   
   bind(sockfd, (struct sockaddr*)&my_addr, sizeof(struct sockaddr));
-  listen(sockfd, 10);
+  listen(sockfd, BACKLOG);
   sin_size = sizeof(struct sockaddr_in);
 
   std::vector<std::pair<std::string, int>> vn_details(N); //{ip_address,udpport}
@@ -185,6 +185,7 @@ int main(int argc, char* argv[]){
   }
 
   while(true){
+    sleep(WAIT_TIME);
     std::vector<std::vector<int>> tmp;
     int number_of_nodes=0;
     int N_ = 0;
@@ -203,7 +204,6 @@ int main(int argc, char* argv[]){
       }
       costs=tmp;
     }
-    sleep(WAIT_TIME);
   }
 
 

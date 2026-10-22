@@ -39,17 +39,19 @@ int main(int argc, char* argv[]){
 
     send(sockfd, encode_connect_message(own_ip, udp_port), 8, 0);
 
-    char buf[8];
+    char buf[339];
     int red = 0;
     while(1){
         sleep(WAIT_TIME);
         
         red = 0;
-        while(red < sizeof(buf)){
-            ssize_t n = recv(sockfd, buf + red, sizeof(buf) - red, 0);
+        int req_size=1;
+        while(red < req_size){
+            ssize_t n = recv(sockfd, buf + red, sizeof(buf) - red,MSG_DONTWAIT);
             
             if(n > 0){
                 red += n;
+                req_size=buf[0];
                 continue;
             }
             if(n == 0){
