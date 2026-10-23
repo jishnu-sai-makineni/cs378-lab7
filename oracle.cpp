@@ -1,223 +1,237 @@
-#include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/socket.h>
 #include <unistd.h>
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <vector>
-#include <math.h>
 
-#define MYPORT 5000
+#include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#define DEFAULT_PORT 5000
 #define BACKLOG 26
 #define WAIT_TIME 10
+#define MAX_NODES 26
+#define TUPLE_SIZE 13
+#define MAX_MSG_SIZE (1 + MAX_NODES * TUPLE_SIZE)
 
-std::pair<std::string, int> decode_connect_msg(char buf[8]){
-  std::pair<std::string,int> msg={"",0};
-  for(int i=0;i<4;i++){
-    int  a= buf[i];
-    char tmp_buf[10];
-    snprintf(tmp_buf,sizeof(tmp_buf),"%d",a);
-    std::string tmp_string(tmp_buf);
-    msg.first+=tmp_string;
-    if(i!=3)msg.first+=".";
-  }
+struct VNInfo {
+    std::string ip;
+    int port = 0;
+    int fd = -1;
+};
 
-  memcpy(&(msg.second),buf+4,sizeof(msg.second));
-  return msg;
-}
+static bool read_config(const char *path, std::vector<std::vector<int>> &costs) {
+    std::ifstream fin(path);
+    if (!fin) {
+        std::cerr << "Cannot open config file: " << path << "\n";
+        return false;
+    }
 
-void encode_link_state(std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs,char buf[339]){
-    buf[0]=(char)(msgs.size());
-    for(int i=0;i<msgs.size();i++){
-      buf[1+9*i]=msgs[i].first.first;
-      std::string ip_tmp=msgs[i].first.second;
-      for(int k=0;k<4;k++){
-        std::string tmp="";
-        int j=0;
-        while(ip_tmp[j]!='.' && j<ip_tmp.size()){
-          tmp+=ip_tmp[j];
-          j++;
+    costs.clear();
+    std::string line;
+    while (std::getline(fin, line)) {
+        size_t first = line.find_first_not_of(" \t\r\n");
+        if (first == std::string::npos || line[first] == '#') continue;
+        std::stringstream ss(line);
+        std::vector<int> row;
+        int value;
+        while (ss >> value) row.push_back(value);
+        if (!ss.eof()) {
+            std::cerr << "Invalid value in config line: " << line << "\n";
+            return false;
         }
-        buf[2+9*i+k]=(char)(std::stoi(tmp));
-      }
-      memcpy(buf+8+9*i,&(msgs[i].second.first),sizeof(int));
-      memcpy(buf+12+9*i,&msgs[i].second.second,sizeof(int));//check here 
-    }
-}
-
-std::vector<std::vector<int>> get_costs(char* file_name){
-  std::ifstream fin(file_name);
-
-  std::string line;
-  int N = 0;
-  int n;
-  std::vector<std::vector<int>> costs;
-  if(fin.is_open()){
-    while(true){
-      std::getline(fin, line);
-      if(line.front() == '#' || line.empty())continue;
-      else break;
-    }
-    std::stringstream ss(line);
-    std::vector<int> temp;
-    while(ss >> n){
-      temp.push_back(n);
-      N++;
-    }
-    N++;
-    costs.push_back(temp);
-    for(int i=0;i<N-2;i++){
-      while(true){
-        std::getline(fin, line);
-        if(line.front() == '#' || line.empty())continue;
-        else break;
-      }
-      std::stringstream ss(line);
-      temp.clear();
-      while(ss >> n){
-        temp.push_back(n);
-      }
-      costs.push_back(temp);
-    }
-  }
-  return costs;
-}
-
-void parse_file(std::ifstream& fin,std::vector<std::vector<int>>&costs,int&N){
-  int n;
-  std::string line;
-  if(fin.is_open()){
-    while(true){
-      std::getline(fin, line);
-      if(line.front() == '#' || line.empty())continue;
-      else break;
-    }
-    std::stringstream ss(line);
-    std::vector<int> temp;
-    while(ss >> n){
-      temp.push_back(n);
-      N++;
-    }
-    N++;
-    costs.push_back(temp);
-    for(int i=0;i<N-2;i++){
-      while(true){
-        std::getline(fin, line);
-        if(line.front() == '#' || line.empty())continue;
-        else break;
-      }
-      std::stringstream ss(line);
-      temp.clear();
-      while(ss >> n){
-        temp.push_back(n);
-      }
-      costs.push_back(temp);
-    }
-  }
-}
-
-int main(int argc, char* argv[]){
-
-  if(argc != 2){
-    std::cout << "bad bad";
-    return -1;
-  }
-
-  std::ifstream fin(argv[1]);
-
-  if(!fin){
-    std::cout << "file bad";
-    return -1;
-  }
-
-  int N = 0;
-  std::vector<std::vector<int>> costs; //
-  parse_file(fin,costs,N);
-
-  int sockfd; //, new_fd;
-  struct sockaddr_in my_addr;
-  std::vector<sockaddr_in> vn_addrs(N);
-  unsigned int sin_size;
-  sockfd = socket(PF_INET, SOCK_STREAM, 0);
-
-  std::vector<int> vn_fds(N,0);
-
-  my_addr.sin_family = AF_INET;
-  my_addr.sin_port = htons(MYPORT);
-  my_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  memset(&(my_addr.sin_zero), '\0', 8);
-  
-  bind(sockfd, (struct sockaddr*)&my_addr, sizeof(struct sockaddr));
-  listen(sockfd, BACKLOG);
-  sin_size = sizeof(struct sockaddr_in);
-
-  std::vector<std::pair<std::string, int>> vn_details(N); //{ip_address,udpport}
-
-  for(int i=0;i<N;i++){
-    vn_fds[i] = accept(sockfd, (struct sockaddr *)&(vn_addrs[i]), &sin_size);
-
-    char connect_buf[8];
-    int recieved_bytes=0;
-    while(recieved_bytes<8){
-      int just_recieved=recv(vn_fds[i], connect_buf+recieved_bytes, 8-recieved_bytes, 0);
-      if(just_recieved<=0){
-       std::cout<<"connection with "<<"A"+i<<" is closed or there is an error while recieving the connect message";
-        break;
-      }
-      recieved_bytes+=just_recieved;
+        if (!row.empty()) costs.push_back(row);
     }
 
-    vn_details[i] = decode_connect_msg(connect_buf);
-  }
-
-  for(int i=0;i<N;i++){
-    std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
-    msgs.push_back({{'A'+i,vn_details[i].first},{vn_details[i].second,0}});
-    for(int j=0;j<costs[i].size();j++){
-      msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,costs[i][j]}});
+    if (costs.empty() || costs.size() >= MAX_NODES) {
+        std::cerr << "Config must describe between 2 and 26 nodes.\n";
+        return false;
     }
-    char send_buffer[339];
-    encode_link_state(msgs,send_buffer);
-    send(vn_fds[i],send_buffer,339,0);
-  }
-
-  while(true){
-    sleep(WAIT_TIME);
-    std::vector<std::vector<int>> tmp;
-    int number_of_nodes=0;
-    int N_ = 0;
-    parse_file(fin,tmp,N_);
-    if(tmp!=costs){
-     std::vector<std::pair<std::pair<char,std::string>,std::pair<int,int>>> msgs;
-      for(int i=0;i<N;i++){
-        for(int j=0;j<costs[i].size();j++){
-          if(tmp[i][j]!=costs[i][j]){
-            msgs.push_back({{'A'+i+j+1,vn_details[i+j+1].first},{vn_details[i+j+1].second,tmp[i][j]}});
-          }
+    const size_t n = costs.size() + 1;
+    for (size_t i = 0; i < costs.size(); ++i) {
+        if (costs[i].size() != n - i - 1) {
+            std::cerr << "Config row " << (i + 1) << " should contain "
+                      << (n - i - 1) << " costs, but contains "
+                      << costs[i].size() << ".\n";
+            return false;
         }
-        char send_buffer[339];
-        encode_link_state(msgs,send_buffer);
-        send(vn_fds[i],send_buffer,339,0);
-      }
-      costs=tmp;
+        for (int c : costs[i]) {
+            if (c == 0 || c < -1 || c > 65535) {
+                std::cerr << "Costs must be -1 (no link) or positive integers <= 65535.\n";
+                return false;
+            }
+        }
     }
-  }
+    return true;
+}
 
+static bool recv_all(int fd, unsigned char *buf, size_t len) {
+    size_t done = 0;
+    while (done < len) {
+        ssize_t n = recv(fd, buf + done, len - done, 0);
+        if (n == 0) return false;
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        done += static_cast<size_t>(n);
+    }
+    return true;
+}
 
+static bool send_all(int fd, const unsigned char *buf, size_t len) {
+    size_t done = 0;
+    while (done < len) {
+        ssize_t n = send(fd, buf + done, len - done, 0);
+        if (n < 0) {
+            if (errno == EINTR) continue;
+            return false;
+        }
+        done += static_cast<size_t>(n);
+    }
+    return true;
+}
 
+/* CONNECT format retained from the current Oracle: IPv4 bytes + native 4-byte int port. */
+static bool decode_connect_msg(const unsigned char buf[8], VNInfo &vn) {
+    struct in_addr addr;
+    int port;
+    memcpy(&addr.s_addr, buf, 4);
+    memcpy(&port, buf + 4, 4);
+    char ip[INET_ADDRSTRLEN];
+    if (!inet_ntop(AF_INET, &addr, ip, sizeof(ip)) || port == 0 || port > 65535)
+        return false;
+    vn.ip = ip;
+    vn.port = static_cast<int>(port);
+    return true;
+}
 
-  
-  // char *msg = "hello world\0";
-  // int len, bytes_sent;
+/* LINK-STATE: 1-byte count; tuple = ID(1), IPv4(4), port(2), cost(2). */
+static bool encode_link_state(const std::vector<std::pair<char, int>> &node_costs,
+                              const std::vector<VNInfo> &vns,
+                              unsigned char buf[MAX_MSG_SIZE], size_t &len) {
+    if (node_costs.size() > MAX_NODES) return false;
+    memset(buf, 0, MAX_MSG_SIZE);
+    buf[0] = static_cast<unsigned char>(node_costs.size());
+    size_t off = 1;
+    for (const auto &entry : node_costs) {
+        int node = entry.first - 'A';
+        int cost = entry.second;
+        if (node < 0 || node >= static_cast<int>(vns.size()) || cost < 0 || cost > 65535)
+            return false;
+        buf[off++] = static_cast<unsigned char>(entry.first);
+        struct in_addr ip;
+        if (inet_pton(AF_INET, vns[node].ip.c_str(), &ip) != 1) return false;
+        memcpy(buf + off, &ip.s_addr, 4); off += 4;
+        int port_wire = vns[node].port;
+        int cost_wire = cost;
+        memcpy(buf + off, &port_wire, 4); off += 4;
+        memcpy(buf + off, &cost_wire, 4); off += 4;
+    }
+    len = off;
+    return true;
+}
 
-  // len = strlen(msg);
-  // // bytes_sent = send(new_fd, msg, len, 0);
-  
-  // printf("\nbytes sent: %d\n", bytes_sent);
+static int link_cost(const std::vector<std::vector<int>> &costs, int i, int j) {
+    if (i == j) return 0;
+    int a = std::min(i, j), b = std::max(i, j);
+    return costs[a][b - a - 1];
+}
 
-  // // close(new_fd);
-  // close(sockfd);
+static bool send_node_state(int i, const std::vector<std::vector<int>> &costs,
+                            const std::vector<VNInfo> &vns) {
+    std::vector<std::pair<char, int>> entries;
+    entries.push_back({static_cast<char>('A' + i), 0});
+    for (int j = 0; j < static_cast<int>(vns.size()); ++j) {
+        if (j == i) continue;
+        int cost = link_cost(costs, i, j);
+        if (cost > 0) entries.push_back({static_cast<char>('A' + j), cost});
+    }
+    unsigned char buf[MAX_MSG_SIZE];
+    size_t len = 0;
+    if (!encode_link_state(entries, vns, buf, len)) {
+        std::cerr << "Failed to encode LINK-STATE for node " << char('A' + i) << "\n";
+        return false;
+    }
+    return send_all(vns[i].fd, buf, len);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 2 || argc > 3) {
+        std::cerr << "Usage: " << argv[0] << " <config-file> [listen-port]\n";
+        return 1;
+    }
+    int listen_port = DEFAULT_PORT;
+    if (argc == 3) {
+        listen_port = std::stoi(argv[2]);
+        if (listen_port < 1 || listen_port > 65535) {
+            std::cerr << "Listen port must be in 1..65535\n";
+            return 1;
+        }
+    }
+
+    std::vector<std::vector<int>> costs;
+    if (!read_config(argv[1], costs)) return 1;
+    const int n = static_cast<int>(costs.size()) + 1;
+
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) { perror("socket"); return 1; }
+    int reuse = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+
+    struct sockaddr_in my_addr{};
+    my_addr.sin_family = AF_INET;
+    my_addr.sin_port = htons(listen_port);
+    my_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    if (bind(sockfd, reinterpret_cast<struct sockaddr *>(&my_addr), sizeof(my_addr)) < 0) {
+        perror("bind"); close(sockfd); return 1;
+    }
+    if (listen(sockfd, BACKLOG) < 0) { perror("listen"); close(sockfd); return 1; }
+
+    std::vector<VNInfo> vns(n);
+    std::cout << "Oracle listening on all IPv4 interfaces, TCP port " << listen_port
+              << "; waiting for " << n << " virtual nodes\n";
+
+    for (int i = 0; i < n; ++i) {
+        struct sockaddr_in peer{};
+        socklen_t peer_len = sizeof(peer);
+        int fd = accept(sockfd, reinterpret_cast<struct sockaddr *>(&peer), &peer_len);
+        if (fd < 0) { perror("accept"); close(sockfd); return 1; }
+        unsigned char connect_buf[8];
+        if (!recv_all(fd, connect_buf, sizeof(connect_buf)) || !decode_connect_msg(connect_buf, vns[i])) {
+            std::cerr << "Invalid CONNECT for node " << char('A' + i) << "\n";
+            close(fd); --i; continue;
+        }
+        vns[i].fd = fd;
+        std::cout << char('A' + i) << " connected at " << vns[i].ip << ":" << vns[i].port << "\n";
+    }
+    
+
+    for (int i = 0; i < n; ++i) {
+        if (!send_node_state(i, costs, vns))
+            std::cerr << "Failed to send initial LINK-STATE to " << char('A' + i) << "\n";
+    }
+
+    while (true) {
+        sleep(WAIT_TIME);
+        std::vector<std::vector<int>> updated;
+        if (!read_config(argv[1], updated) || updated.size() + 1 != vns.size()) {
+            std::cerr << "Could not reload config or node count changed; keeping old topology.\n";
+            continue;
+        }
+        if (updated == costs) continue;
+        costs = updated;
+        std::cout << "Topology changed; refreshing all nodes.\n";
+        for (int i = 0; i < n; ++i) {
+            if (!send_node_state(i, costs, vns))
+                std::cerr << "Failed to refresh node " << char('A' + i) << "\n";
+        }
+    }
 }
